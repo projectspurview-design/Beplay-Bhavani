@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/scrollView"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+    <!-- LinearLayout to hold the Back button and other content -->
+    <LinearLayout
+        android:id="@+id/containerButtons"
+        android:orientation="vertical"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <!-- Back Button placed at the top -->
+        <Button
+            android:id="@+id/backButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Back"
+            android:onClick="goBack" /> <!-- Calls goBack method when clicked -->
+
+        <!-- Your existing dynamic content (buttons or other elements) -->
+
+    </LinearLayout>
+
+    <!-- TextView for displaying JSON response -->
+    <TextView
+        android:id="@+id/tvResponse"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="JSON Response will appear here"
+        android:paddingTop="16dp"
+        android:scrollbars="vertical"/>
+</ScrollView>

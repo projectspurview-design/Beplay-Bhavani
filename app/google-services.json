@@ -1,0 +1,59 @@
+{
+  "project_info": {
+    "project_number": "4309035528",
+    "firebase_url": "https://be-play-android-app-default-rtdb.firebaseio.com",
+    "project_id": "be-play-android-app",
+    "storage_bucket": "be-play-android-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:4309035528:android:47229f7b5dec7536927fbd",
+        "android_client_info": {
+          "package_name": "com.example.beplay"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyATmdadFFVE1NCG67NB47dv5FKmOZLP9J0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "4309035528-rhfd11rkfe1reuvmra63pomg7mtle5tb.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:4309035528:android:f7e3c77787ff60f1927fbd",
+        "android_client_info": {
+          "package_name": "com.example.beplay_v3"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyATmdadFFVE1NCG67NB47dv5FKmOZLP9J0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "4309035528-rhfd11rkfe1reuvmra63pomg7mtle5tb.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

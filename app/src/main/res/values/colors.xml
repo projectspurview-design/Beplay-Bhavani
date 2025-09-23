@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <color name="light_gray">#D3D3D3</color> <!-- Light Gray -->
+    <color name="darker_gray">#A9A9A9</color> <!-- Darker Gray -->
+
+    <color name="selected_button_bg">#A9A9A9</color> <!-- Dark grey -->
+    <color name="unselected_button_bg">#666666</color> <!-- Light grey -->
+</resources>
