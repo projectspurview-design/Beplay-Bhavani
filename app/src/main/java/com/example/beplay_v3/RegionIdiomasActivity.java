@@ -2,6 +2,7 @@ package com.example.beplay_v3;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.os.Bundle;
 import android.widget.Button;
@@ -32,6 +33,7 @@ public class RegionIdiomasActivity extends AppCompatActivity {
 
     private String codPais, categoryId, eventId, roomId, regionId;
 
+    @SuppressLint("MissingInflatedId")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);

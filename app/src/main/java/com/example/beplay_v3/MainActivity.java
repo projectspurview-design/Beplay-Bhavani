@@ -38,7 +38,7 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends BaseTtsActivity {
 
     private static final String URL = "https://console.beplay.io/api/idiomas";
 
@@ -78,11 +78,43 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         containerButtons = findViewById(R.id.containerButtons);
 
+        // === Init shared TTS (same style as RegionsActivity) ===
+        initTts("Choose language");
+
         buildKeycodePool();
         initVuzixSpeechClient();
         registerStaticPhrases();  // "back"
 
         fetchIdiomasAndBuildUI();
+    }
+
+    // When intro TTS finishes, speak whichever item is focused
+    @Override
+    protected void onTtsIntroFinished() {
+        speakCurrentlyFocusedItem();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // After coming back, announce focused item again
+        speakCurrentlyFocusedItem();
+    }
+
+    // ===== Speak the currently focused language button =====
+    private void speakCurrentlyFocusedItem() {
+        containerButtons.postDelayed(() -> {
+            View focused = containerButtons.findFocus();
+            if (focused == null && containerButtons.getChildCount() > 0) {
+                View v = containerButtons.getChildAt(0);
+                v.requestFocus();
+                focused = v;
+            }
+
+            if (focused != null) {
+                speakViewLabel(focused, "Selected item");
+            }
+        }, 220);
     }
 
     // Build a pool of distinct keycodes to assign to dynamic phrases.
@@ -158,7 +190,7 @@ public class MainActivity extends AppCompatActivity {
         return VOICE_PREFIX + rawLabel;
     }
 
-    // ===== Your existing logic below (unchanged except for voice hookup) =====
+    // ===== FETCH + UI BUILD (original logic + TTS calls) =====
     private void fetchIdiomasAndBuildUI() {
         Request request = new Request.Builder().url(URL).get().build();
 
@@ -170,6 +202,7 @@ public class MainActivity extends AppCompatActivity {
                     error.setEnabled(false);
                     containerButtons.addView(error);
                     clearDynamicVoice();
+                    speakText("Failed to load languages. Please try again.");
                 });
             }
 
@@ -182,6 +215,7 @@ public class MainActivity extends AppCompatActivity {
                         error.setEnabled(false);
                         containerButtons.addView(error);
                         clearDynamicVoice();
+                        speakText("Unable to load languages. Server error.");
                     });
                     return;
                 }
@@ -200,6 +234,7 @@ public class MainActivity extends AppCompatActivity {
                         Button empty = makeButton("(No items)");
                         empty.setEnabled(false);
                         containerButtons.addView(empty);
+                        speakText("No languages available.");
                         return;
                     }
 
@@ -215,6 +250,9 @@ public class MainActivity extends AppCompatActivity {
                                 Toast.makeText(MainActivity.this, "codPais not available", Toast.LENGTH_SHORT).show();
                                 return;
                             }
+
+                            speakText("Opening " + label);
+
                             Intent intent = new Intent(MainActivity.this, CategoriaActivity.class);
                             intent.putExtra(CategoriaActivity.EXTRA_CODPAIS, codPais);
                             startActivity(intent);
@@ -275,12 +313,18 @@ public class MainActivity extends AppCompatActivity {
         b.setFocusable(true);
         b.setFocusableInTouchMode(true);
 
+        // Focus: ripple + TTS label (same behavior as RegionsActivity)
         b.setOnFocusChangeListener((v, hasFocus) -> {
-            if (hasFocus && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                triggerRipple(v);
+            if (hasFocus) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    triggerRipple(v);
+                }
+                // Speak the button label when highlighted
+                speakViewLabel(v, "Selected item");
             }
         });
 
+        // DPAD navigation (unchanged)
         b.setOnKeyListener((v, keyCode, event) -> {
             if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
 
@@ -360,8 +404,9 @@ public class MainActivity extends AppCompatActivity {
 
         return super.onKeyDown(keyCode, event);
     }
-// Qr code
-    @Override
+
+    // Qr code
+   /* @Override
     protected void onStart() {
         super.onStart();
         SessionManager s = SessionManager.get(this);
@@ -371,8 +416,7 @@ public class MainActivity extends AppCompatActivity {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
             finish();
         }
-    }
-
+    }*/
 
     @Override
     protected void onDestroy() {
@@ -389,6 +433,6 @@ public class MainActivity extends AppCompatActivity {
                 try { vuzixSpeechClient.deletePhrase("Back"); } catch (Exception ignored) {}
             }
         }
-        super.onDestroy();
+        super.onDestroy(); // important: also shuts down TTS via BaseTtsActivity
     }
 }

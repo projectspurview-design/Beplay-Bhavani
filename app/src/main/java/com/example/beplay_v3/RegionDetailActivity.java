@@ -1,7 +1,5 @@
 package com.example.beplay_v3;
 
-import androidx.appcompat.app.AppCompatActivity;
-
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
@@ -28,7 +26,8 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-public class RegionDetailActivity extends AppCompatActivity {
+// NOTE: now extends BaseTtsActivity for shared TTS logic
+public class RegionDetailActivity extends BaseTtsActivity {
 
     public static final String EXTRA_CODPAIS      = "extra_codpais";
     public static final String EXTRA_CATEGORY_ID  = "extra_category_id";
@@ -49,12 +48,31 @@ public class RegionDetailActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_region_detail);
 
+        // Init TTS – same pattern as RegionsActivity
+        initTts("Choose language");
+
         // Get references
         buttonContainer = findViewById(R.id.containerButtons);
 
-        // Back button behavior (same as other screens)
+        // Back button behavior (same navigation, add TTS on focus)
         Button backButton = findViewById(R.id.backButton);
-        if (backButton != null) backButton.setOnClickListener(v -> goBack());
+        if (backButton != null) {
+            backButton.setOnClickListener(v -> goBack());
+
+            backButton.setFocusable(true);
+            backButton.setFocusableInTouchMode(true);
+
+            backButton.setOnFocusChangeListener((v, hasFocus) -> {
+                if (!hasFocus) return;
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    triggerRipple(v);
+                }
+
+                // Speak "Back" (or its label) when highlighted
+                speakViewLabel(v, "Back");
+            });
+        }
 
         // Read extras
         codPais    = getIntent().getStringExtra(EXTRA_CODPAIS);
@@ -78,6 +96,7 @@ public class RegionDetailActivity extends AppCompatActivity {
 
         if (isEmpty(codPais) || isEmpty(categoryId) || isEmpty(eventId) || isEmpty(roomId) || isEmpty(regionId)) {
             buttonContainer.addView(disabled("(Missing codPais/categoryId/eventId/roomId/regionId)"));
+            speakText("Required information is missing. Cannot load languages.");
             return;
         }
 
@@ -89,6 +108,36 @@ public class RegionDetailActivity extends AppCompatActivity {
                 + "/idiomas";
 
         fetchIdiomas(idiomasUrl);
+    }
+
+    @Override
+    protected void onTtsIntroFinished() {
+        // After intro "Choose language", speak the currently focused item
+        speakCurrentlyFocusedItem();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // When returning to this screen, announce focused language again
+        speakCurrentlyFocusedItem();
+    }
+
+    private void speakCurrentlyFocusedItem() {
+        if (buttonContainer == null) return;
+
+        buttonContainer.postDelayed(() -> {
+            View focused = buttonContainer.findFocus();
+            if (focused == null && buttonContainer.getChildCount() > 0) {
+                View first = buttonContainer.getChildAt(0);
+                first.requestFocus();
+                focused = first;
+            }
+
+            if (focused != null) {
+                speakViewLabel(focused, "Selected item");
+            }
+        }, 220);
     }
 
     public void goBack() {
@@ -104,6 +153,7 @@ public class RegionDetailActivity extends AppCompatActivity {
                     if (buttonContainer == null) return;
                     buttonContainer.removeAllViews();
                     buttonContainer.addView(disabled("Request failed: " + e.getMessage()));
+                    speakText("Failed to load languages. Please try again.");
                 });
             }
 
@@ -114,6 +164,7 @@ public class RegionDetailActivity extends AppCompatActivity {
                         if (buttonContainer == null) return;
                         buttonContainer.removeAllViews();
                         buttonContainer.addView(disabled("HTTP " + response.code()));
+                        speakText("Unable to load languages. Server error.");
                     });
                     return;
                 }
@@ -131,6 +182,7 @@ public class RegionDetailActivity extends AppCompatActivity {
                     buttonContainer.removeAllViews();
                     if (langs.size() == 0) {
                         buttonContainer.addView(disabled("(No languages)"));
+                        speakText("No languages available.");
                         return;
                     }
 
@@ -144,6 +196,10 @@ public class RegionDetailActivity extends AppCompatActivity {
                         Button b = makeButton(name);
                         b.setOnClickListener(v -> {
                             if (id == null) return;
+
+                            // Speak when user selects a language
+                            speakText("Opening " + name);
+
                             Intent next = new Intent(RegionDetailActivity.this, AccessibilitiesActivity.class);
                             next.putExtra(AccessibilitiesActivity.EXTRA_CODPAIS, codPais);
                             next.putExtra(AccessibilitiesActivity.EXTRA_CATEGORY_ID, categoryId);
@@ -156,7 +212,7 @@ public class RegionDetailActivity extends AppCompatActivity {
                         buttonContainer.addView(b);
                     }
 
-                    // DPAD-ready
+                    // DPAD-ready: focus first button
                     if (buttonContainer.getChildCount() > 0) {
                         buttonContainer.getChildAt(0).requestFocus();
                     }
@@ -165,7 +221,7 @@ public class RegionDetailActivity extends AppCompatActivity {
         });
     }
 
-    // ---------- UI helpers: darker ripple, elevation, DPAD focus/keys, focus ripple ----------
+    // ---------- UI helpers: darker ripple, elevation, DPAD focus/keys, focus ripple + TTS ----------
     private Button makeButton(String text) {
         Button b = new Button(this);
         b.setAllCaps(false);
@@ -199,8 +255,12 @@ public class RegionDetailActivity extends AppCompatActivity {
         b.setFocusableInTouchMode(true);
 
         b.setOnFocusChangeListener((v, hasFocus) -> {
-            if (hasFocus && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                triggerRipple(v);
+            if (hasFocus) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    triggerRipple(v);
+                }
+                // TTS when a language button is highlighted
+                speakViewLabel(v, "Selected item");
             }
         });
 
@@ -256,7 +316,10 @@ public class RegionDetailActivity extends AppCompatActivity {
     }
 
     // ---------- utils ----------
-    private int dp(int v) { float d = getResources().getDisplayMetrics().density; return Math.round(v * d); }
+    private int dp(int v) {
+        float d = getResources().getDisplayMetrics().density;
+        return Math.round(v * d);
+    }
     private boolean isEmpty(String s) { return s == null || s.trim().isEmpty(); }
 
     private static String safeString(JsonObject o, String key, String def) {

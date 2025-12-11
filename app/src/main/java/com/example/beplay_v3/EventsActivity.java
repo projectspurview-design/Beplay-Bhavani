@@ -33,7 +33,8 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-public class EventsActivity extends AppCompatActivity {
+// NOTE: Now extends BaseTtsActivity to reuse shared TTS logic
+public class EventsActivity extends BaseTtsActivity {
 
     public static final String EXTRA_CODPAIS     = "extra_codpais";
     public static final String EXTRA_CATEGORY_ID = "extra_category_id";
@@ -74,9 +75,26 @@ public class EventsActivity extends AppCompatActivity {
 
         containerButtons = findViewById(R.id.containerButtons);
 
+        // Initialize shared TTS (same style as RegionsActivity)
+        initTts("Choose event");
+
         // Back button
         Button backButton = findViewById(R.id.backButton);
-        if (backButton != null) backButton.setOnClickListener(v -> goBack());
+        if (backButton != null) {
+            backButton.setOnClickListener(v -> goBack());
+
+            backButton.setFocusable(true);
+            backButton.setFocusableInTouchMode(true);
+
+            backButton.setOnFocusChangeListener((v, hasFocus) -> {
+                if (!hasFocus) return;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    triggerRipple(v);
+                }
+                // TTS: speak "Back" or its label when highlighted
+                speakViewLabel(v, "Back");
+            });
+        }
 
         // Voice init + static phrase ("back")
         buildKeycodePool();
@@ -89,6 +107,7 @@ public class EventsActivity extends AppCompatActivity {
         if (codPais == null || codPais.trim().isEmpty()
                 || categoryId == null || categoryId.trim().isEmpty()) {
             containerButtons.addView(makeDisabledButton("Missing codPais or categoryId"));
+            speakText("Required information is missing. Cannot load events.");
             return;
         }
 
@@ -99,7 +118,36 @@ public class EventsActivity extends AppCompatActivity {
     // same back behavior
     public void goBack() { onBackPressed(); }
 
-    // ---------- ORIGINAL LOGIC KEPT AS-IS (plus voice cleanup/registration where noted) ----------
+    // When intro TTS finishes, speak currently focused item
+    @Override
+    protected void onTtsIntroFinished() {
+        speakCurrentlyFocusedItem();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // After returning to this screen, announce focused item again
+        speakCurrentlyFocusedItem();
+    }
+
+    // Speak currently focused button inside containerButtons
+    private void speakCurrentlyFocusedItem() {
+        containerButtons.postDelayed(() -> {
+            View focused = containerButtons.findFocus();
+            if (focused == null && containerButtons.getChildCount() > 0) {
+                View v = containerButtons.getChildAt(0);
+                v.requestFocus();
+                focused = v;
+            }
+
+            if (focused != null) {
+                speakViewLabel(focused, "Selected item");
+            }
+        }, 220);
+    }
+
+    // ---------- ORIGINAL LOGIC KEPT AS-IS (plus voice + TTS where noted) ----------
     private void fetchAndRenderEvents(String url) {
         Request req = new Request.Builder().url(url).get().build();
         client.newCall(req).enqueue(new Callback() {
@@ -108,6 +156,7 @@ public class EventsActivity extends AppCompatActivity {
                     containerButtons.removeAllViews();
                     containerButtons.addView(makeDisabledButton("Request failed: " + e.getMessage()));
                     clearDynamicVoice(); // avoid stale phrases
+                    speakText("Failed to load events. Please try again.");
                 });
             }
 
@@ -118,6 +167,7 @@ public class EventsActivity extends AppCompatActivity {
                         containerButtons.removeAllViews();
                         containerButtons.addView(makeDisabledButton("HTTP " + response.code()));
                         clearDynamicVoice();
+                        speakText("Unable to load events. Server error.");
                     });
                     return;
                 }
@@ -127,7 +177,6 @@ public class EventsActivity extends AppCompatActivity {
                 catch (Exception ex) { events = new EventItem[0]; }
 
                 EventItem[] finalEvents = events;
-                String pretty = new GsonBuilder().setPrettyPrinting().create().toJson(finalEvents);
 
                 runOnUiThread(() -> {
                     containerButtons.removeAllViews();
@@ -135,6 +184,7 @@ public class EventsActivity extends AppCompatActivity {
 
                     if (finalEvents.length == 0) {
                         containerButtons.addView(makeDisabledButton("(No events)"));
+                        speakText("No events available.");
                         return;
                     }
 
@@ -147,6 +197,9 @@ public class EventsActivity extends AppCompatActivity {
                         btn.setOnClickListener(v -> {
                             String eventId = (ev != null && ev.id != null) ? String.valueOf(ev.id) : null;
                             if (eventId == null || eventId.trim().isEmpty()) return;
+
+                            // TTS: speak on click
+                            speakText("Opening " + label);
 
                             Intent i = new Intent(EventsActivity.this, RoomsActivity.class);
                             i.putExtra(RoomsActivity.EXTRA_CODPAIS, codPais);
@@ -283,8 +336,12 @@ public class EventsActivity extends AppCompatActivity {
         b.setFocusableInTouchMode(true);
 
         b.setOnFocusChangeListener((v, hasFocus) -> {
-            if (hasFocus && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                triggerRipple(v);
+            if (hasFocus) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    triggerRipple(v);
+                }
+                // TTS when event button is highlighted
+                speakViewLabel(v, "Selected item");
             }
         });
 
@@ -378,6 +435,6 @@ public class EventsActivity extends AppCompatActivity {
                 try { vuzixSpeechClient.deletePhrase("Back"); } catch (Exception ignored) {}
             }
         }
-        super.onDestroy();
+        super.onDestroy(); // BaseTtsActivity will handle shutting down TTS
     }
 }

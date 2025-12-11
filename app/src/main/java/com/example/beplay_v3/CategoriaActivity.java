@@ -16,6 +16,9 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
+
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.vuzix.sdk.speechrecognitionservice.VuzixSpeechClient;
@@ -65,6 +68,12 @@ public class CategoriaActivity extends AppCompatActivity {
             "ok", "okay", "o k", "k", "yes", "no", "yeah", "yep"
     ));
 
+    // ===== TTS fields (same pattern as RegionsActivity) =====
+    private TextToSpeech tts;
+    private View lastSpokenView = null;
+    private long lastSpeakMillis = 0;
+    private boolean introFinished = false;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -74,7 +83,69 @@ public class CategoriaActivity extends AppCompatActivity {
 
         // Back button click
         Button backButton = findViewById(R.id.backButton);
-        backButton.setOnClickListener(v -> goBack());
+        if (backButton != null) {
+            backButton.setOnClickListener(v -> goBack());
+
+            // Make it focusable and speak label when focused (like RegionsActivity nav buttons)
+            backButton.setFocusable(true);
+            backButton.setFocusableInTouchMode(true);
+            backButton.setOnFocusChangeListener((v, hasFocus) -> {
+                if (!hasFocus) return;
+                if (!introFinished) return;
+
+                long now = System.currentTimeMillis();
+                if (v != lastSpokenView || (now - lastSpeakMillis) > 800) {
+                    lastSpokenView = v;
+                    lastSpeakMillis = now;
+
+                    if (v instanceof Button) {
+                        String label = ((Button) v).getText().toString();
+                        if (label != null && !label.trim().isEmpty()) {
+                            speakText(label);
+                        } else {
+                            speakText("Back");
+                        }
+                    } else {
+                        speakText("Back");
+                    }
+                }
+            });
+        }
+
+        // ===== TTS init (same style as RegionsActivity) =====
+        tts = new TextToSpeech(this, status -> {
+            if (status == TextToSpeech.SUCCESS) {
+                tts.setLanguage(Locale.US);
+                tts.setSpeechRate(0.9f);
+                tts.setPitch(0.9f);
+
+                tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                    @Override
+                    public void onStart(String utteranceId) { }
+
+                    @Override
+                    public void onDone(String utteranceId) {
+                        if ("intro_categoria".equals(utteranceId)) {
+                            introFinished = true;
+                            runOnUiThread(() -> speakCurrentlyFocusedItem());
+                        }
+                    }
+
+                    @Override
+                    public void onError(String utteranceId) {
+                        introFinished = true;
+                    }
+                });
+
+                // Intro prompt for this screen
+                tts.speak("Choose category",
+                        TextToSpeech.QUEUE_FLUSH,
+                        null,
+                        "intro_categoria");
+            } else {
+                Toast.makeText(this, "Text to speech initialization failed", Toast.LENGTH_SHORT).show();
+            }
+        });
 
         // Voice: init + static phrase ("back")
         buildKeycodePool();
@@ -166,13 +237,62 @@ public class CategoriaActivity extends AppCompatActivity {
                         }
                     }
 
-                    // Optional: focus the first button so DPAD navigation works immediately
+                    // Optional: focus the first button so DPAD navigation + TTS works immediately
                     if (containerButtons.getChildCount() > 0) {
                         containerButtons.getChildAt(0).requestFocus();
                     }
                 });
             }
         });
+    }
+
+    // ===== TTS helpers (same logic as RegionsActivity) =====
+    private void speakText(String text) {
+        if (tts != null && text != null && !text.trim().isEmpty()) {
+            if (tts.isSpeaking()) {
+                tts.stop();
+            }
+            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, null);
+        }
+    }
+
+    // Speak whichever view is currently focused inside containerButtons
+    private void speakCurrentlyFocusedItem() {
+        if (!introFinished) return;
+        if (containerButtons == null) return;
+
+        containerButtons.postDelayed(() -> {
+            View focused = containerButtons.findFocus();
+            if (focused == null && containerButtons.getChildCount() > 0) {
+                View v = containerButtons.getChildAt(0);
+                v.requestFocus();
+                focused = v;
+            }
+
+            if (focused != null) {
+                long now = System.currentTimeMillis();
+                if (focused != lastSpokenView || (now - lastSpeakMillis) > 800) {
+                    lastSpokenView = focused;
+                    lastSpeakMillis = now;
+
+                    if (focused instanceof Button) {
+                        String label = ((Button) focused).getText().toString();
+                        if (label != null && !label.trim().isEmpty()) {
+                            speakText(label);
+                            return;
+                        }
+                    }
+                    speakText("Selected item");
+                }
+            }
+        }, 220);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // When returning to this screen, announce the currently focused item
+        speakCurrentlyFocusedItem();
     }
 
     // ===== Voice helpers =====
@@ -273,8 +393,29 @@ public class CategoriaActivity extends AppCompatActivity {
         b.setFocusableInTouchMode(true);
 
         b.setOnFocusChangeListener((v, hasFocus) -> {
-            if (hasFocus && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            if (!hasFocus) return;
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 triggerRipple(v);
+            }
+
+            if (!introFinished) return;
+
+            long now = System.currentTimeMillis();
+            if (v != lastSpokenView || (now - lastSpeakMillis) > 800) {
+                lastSpokenView = v;
+                lastSpeakMillis = now;
+
+                if (v instanceof Button) {
+                    String label = ((Button) v).getText().toString();
+                    if (label != null && !label.trim().isEmpty()) {
+                        speakText(label);
+                    } else {
+                        speakText("Selected item");
+                    }
+                } else {
+                    speakText("Selected item");
+                }
             }
         });
 
@@ -355,6 +496,14 @@ public class CategoriaActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        // TTS cleanup
+        if (tts != null) {
+            tts.stop();
+            tts.shutdown();
+            tts = null;
+        }
+
+        // Vuzix speech cleanup
         if (vuzixSpeechClient != null) {
             for (String phrase : dynamicPhrases) {
                 try { vuzixSpeechClient.deletePhrase(phrase); } catch (Exception ignored) {}

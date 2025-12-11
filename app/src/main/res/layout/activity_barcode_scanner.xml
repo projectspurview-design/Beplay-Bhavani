@@ -44,6 +44,7 @@
             android:text="Back"
             android:textColor="@android:color/white"
             android:textStyle="bold"
+            android:visibility="gone"
             android:padding="8dp" />
 
         <View
@@ -58,6 +59,7 @@
             android:text="Torch"
             android:textColor="@android:color/white"
             android:textStyle="bold"
+            android:visibility="gone"
             android:padding="8dp" />
     </LinearLayout>
 

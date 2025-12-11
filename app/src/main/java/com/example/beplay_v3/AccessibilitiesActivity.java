@@ -1,7 +1,5 @@
 package com.example.beplay_v3;
 
-import androidx.appcompat.app.AppCompatActivity;
-
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
@@ -28,7 +26,8 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-public class AccessibilitiesActivity extends AppCompatActivity {
+// Now extends BaseTtsActivity to reuse shared TTS logic (same as RegionsActivity)
+public class AccessibilitiesActivity extends BaseTtsActivity {
 
     public static final String EXTRA_CODPAIS       = "extra_codpais";
     public static final String EXTRA_CATEGORY_ID   = "extra_category_id";
@@ -51,9 +50,27 @@ public class AccessibilitiesActivity extends AppCompatActivity {
 
         buttonContainer = findViewById(R.id.containerButtons);
 
-        // Back button (same behavior as other screens)
+        // Init TTS intro (same style as RegionsActivity)
+        initTts("Choose accessibility");
+
+        // Back button (same behavior as other screens, plus TTS on focus)
         Button backButton = findViewById(R.id.backButton);
-        if (backButton != null) backButton.setOnClickListener(v -> onBackPressed());
+        if (backButton != null) {
+            backButton.setOnClickListener(v -> onBackPressed());
+
+            backButton.setFocusable(true);
+            backButton.setFocusableInTouchMode(true);
+
+            backButton.setOnFocusChangeListener((v, hasFocus) -> {
+                if (!hasFocus) return;
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    triggerRipple(v);
+                }
+                // TTS: speak "Back" when highlighted
+                speakViewLabel(v, "Back");
+            });
+        }
 
         codPais     = getIntent().getStringExtra(EXTRA_CODPAIS);
         categoryId  = getIntent().getStringExtra(EXTRA_CATEGORY_ID);
@@ -67,6 +84,7 @@ public class AccessibilitiesActivity extends AppCompatActivity {
             if (buttonContainer != null) {
                 buttonContainer.addView(disabled("(Missing codPais/categoryId/eventId/roomId/regionId/languageId)"));
             }
+            speakText("Required information is missing. Cannot load accessibilities.");
             return;
         }
 
@@ -81,7 +99,37 @@ public class AccessibilitiesActivity extends AppCompatActivity {
         fetchAccessibilities(listUrl);
     }
 
-    // -------- ORIGINAL LOGIC KEPT AS-IS (minus TextView/json printing) --------
+    // When intro TTS finishes, speak whichever accessibility is focused
+    @Override
+    protected void onTtsIntroFinished() {
+        speakCurrentlyFocusedItem();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // When coming back to this screen, read focused item again
+        speakCurrentlyFocusedItem();
+    }
+
+    private void speakCurrentlyFocusedItem() {
+        if (buttonContainer == null) return;
+
+        buttonContainer.postDelayed(() -> {
+            View focused = buttonContainer.findFocus();
+            if (focused == null && buttonContainer.getChildCount() > 0) {
+                View first = buttonContainer.getChildAt(0);
+                first.requestFocus();
+                focused = first;
+            }
+
+            if (focused != null) {
+                speakViewLabel(focused, "Selected item");
+            }
+        }, 220);
+    }
+
+    // -------- ORIGINAL LOGIC KEPT AS-IS (with TTS for errors/info/click) --------
     private void fetchAccessibilities(String url) {
         Request req = new Request.Builder().url(url).get().build();
         client.newCall(req).enqueue(new Callback() {
@@ -90,6 +138,7 @@ public class AccessibilitiesActivity extends AppCompatActivity {
                     if (buttonContainer == null) return;
                     buttonContainer.removeAllViews();
                     buttonContainer.addView(disabled("Request failed: " + e.getMessage()));
+                    speakText("Failed to load accessibilities. Please try again.");
                 });
             }
 
@@ -100,6 +149,7 @@ public class AccessibilitiesActivity extends AppCompatActivity {
                         if (buttonContainer == null) return;
                         buttonContainer.removeAllViews();
                         buttonContainer.addView(disabled("HTTP " + response.code()));
+                        speakText("Unable to load accessibilities. Server error.");
                     });
                     return;
                 }
@@ -117,6 +167,7 @@ public class AccessibilitiesActivity extends AppCompatActivity {
                     buttonContainer.removeAllViews();
                     if (accs.size() == 0) {
                         buttonContainer.addView(disabled("(No accessibilities)"));
+                        speakText("No accessibilities available.");
                         return;
                     }
 
@@ -129,6 +180,10 @@ public class AccessibilitiesActivity extends AppCompatActivity {
                         Button b = makeButton(name);
                         b.setOnClickListener(v -> {
                             if (id == null) return;
+
+                            // Speak when user selects an accessibility
+                            speakText("Opening " + name);
+
                             Intent next = new Intent(AccessibilitiesActivity.this, AccessibilityDetailActivity.class);
                             next.putExtra(AccessibilityDetailActivity.EXTRA_CODPAIS, codPais);
                             next.putExtra(AccessibilityDetailActivity.EXTRA_CATEGORY_ID, categoryId);
@@ -152,7 +207,7 @@ public class AccessibilitiesActivity extends AppCompatActivity {
     }
     // -------- END ORIGINAL LOGIC --------
 
-    // -------- UI helpers: darker ripple, elevation, DPAD focus/keys, focus ripple --------
+    // -------- UI helpers: darker ripple, elevation, DPAD focus/keys, focus ripple + TTS --------
     private Button makeButton(String text) {
         Button b = new Button(this);
         b.setAllCaps(false);
@@ -186,8 +241,12 @@ public class AccessibilitiesActivity extends AppCompatActivity {
         b.setFocusableInTouchMode(true);
 
         b.setOnFocusChangeListener((v, hasFocus) -> {
-            if (hasFocus && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                triggerRipple(v);
+            if (hasFocus) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    triggerRipple(v);
+                }
+                // TTS when an accessibility button is highlighted
+                speakViewLabel(v, "Selected item");
             }
         });
 
@@ -242,8 +301,20 @@ public class AccessibilitiesActivity extends AppCompatActivity {
         }
     }
 
-    private int dp(int v) { float d = getResources().getDisplayMetrics().density; return Math.round(v * d); }
+    private int dp(int v) {
+        float d = getResources().getDisplayMetrics().density;
+        return Math.round(v * d);
+    }
+
     private static boolean isEmpty(String s) { return s == null || s.trim().isEmpty(); }
-    private static String safeString(JsonObject o, String k, String d){ return (o!=null&&o.has(k)&&!o.get(k).isJsonNull())?o.get(k).getAsString():d; }
-    private static Integer safeInt(JsonObject o, String k, Integer d){ try{ return (o!=null&&o.has(k)&&!o.get(k).isJsonNull())?o.get(k).getAsInt():d; }catch(Exception e){ return d; } }
+    private static String safeString(JsonObject o, String k, String d){
+        return (o!=null && o.has(k) && !o.get(k).isJsonNull()) ? o.get(k).getAsString() : d;
+    }
+    private static Integer safeInt(JsonObject o, String k, Integer d){
+        try{
+            return (o!=null && o.has(k) && !o.get(k).isJsonNull()) ? o.get(k).getAsInt() : d;
+        }catch(Exception e){
+            return d;
+        }
+    }
 }

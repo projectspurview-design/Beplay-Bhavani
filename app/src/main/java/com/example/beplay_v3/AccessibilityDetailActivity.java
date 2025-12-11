@@ -9,16 +9,20 @@ import android.graphics.drawable.Drawable;
 import android.graphics.drawable.RippleDrawable;
 import android.os.Build;
 import android.os.Bundle;
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.Toast;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 
 import java.io.IOException;
+import java.util.Locale;
 
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -43,6 +47,12 @@ public class AccessibilityDetailActivity extends AppCompatActivity {
 
     private String codPais, categoryId, eventId, roomId, regionId, languageId, accessibilityId;
 
+    // ===== TTS fields (same style as RegionsActivity) =====
+    private TextToSpeech tts;
+    private View lastSpokenView = null;
+    private long lastSpeakMillis = 0L;
+    private boolean introFinished = false;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -50,10 +60,60 @@ public class AccessibilityDetailActivity extends AppCompatActivity {
 
         buttonContainer = findViewById(R.id.containerButtons);
 
-        // Back button behavior like other screens
+        // ----- Back button behavior like other screens + TTS on focus -----
         Button backButton = findViewById(R.id.backButton);
-        if (backButton != null) backButton.setOnClickListener(v -> onBackPressed());
+        if (backButton != null) {
+            backButton.setOnClickListener(v -> onBackPressed());
 
+            backButton.setFocusable(true);
+            backButton.setFocusableInTouchMode(true);
+
+            backButton.setOnFocusChangeListener((v, hasFocus) -> {
+                if (!hasFocus) return;
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    triggerRipple(v);
+                }
+                // Speak "Back" when highlighted
+                speakViewLabel(v, "Back");
+            });
+        }
+
+        // ----- Init TTS (intro: "Choose professional") -----
+        tts = new TextToSpeech(this, status -> {
+            if (status == TextToSpeech.SUCCESS) {
+                tts.setLanguage(Locale.US);
+                tts.setSpeechRate(0.9f);
+                tts.setPitch(0.9f);
+
+                tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                    @Override
+                    public void onStart(String utteranceId) { }
+
+                    @Override
+                    public void onDone(String utteranceId) {
+                        if ("intro_professional".equals(utteranceId)) {
+                            introFinished = true;
+                            runOnUiThread(() -> speakCurrentlyFocusedItem());
+                        }
+                    }
+
+                    @Override
+                    public void onError(String utteranceId) {
+                        introFinished = true;
+                    }
+                });
+
+                tts.speak("Choose professional",
+                        TextToSpeech.QUEUE_FLUSH,
+                        null,
+                        "intro_professional");
+            } else {
+                Toast.makeText(this, "Text to Speech initialization failed", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        // ----- Read extras (unchanged) -----
         codPais         = getIntent().getStringExtra(EXTRA_CODPAIS);
         categoryId      = getIntent().getStringExtra(EXTRA_CATEGORY_ID);
         eventId         = getIntent().getStringExtra(EXTRA_EVENT_ID);
@@ -67,6 +127,7 @@ public class AccessibilityDetailActivity extends AppCompatActivity {
             if (buttonContainer != null) {
                 buttonContainer.addView(disabled("(Missing one or more required extras)"));
             }
+            speakText("Required information is missing. Cannot load professional.");
             return;
         }
 
@@ -81,6 +142,31 @@ public class AccessibilityDetailActivity extends AppCompatActivity {
         fetch(url);
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Announce focused item when coming back
+        speakCurrentlyFocusedItem();
+    }
+
+    // Speak whichever view is currently focused
+    private void speakCurrentlyFocusedItem() {
+        if (!introFinished || buttonContainer == null) return;
+
+        buttonContainer.postDelayed(() -> {
+            View focused = buttonContainer.findFocus();
+            if (focused == null && buttonContainer.getChildCount() > 0) {
+                View first = buttonContainer.getChildAt(0);
+                first.requestFocus();
+                focused = first;
+            }
+
+            if (focused != null) {
+                speakViewLabel(focused, "Selected item");
+            }
+        }, 220);
+    }
+
     // ---------- ORIGINAL LOGIC KEPT: fetch + read "professional" and show button ----------
     private void fetch(String url) {
         Request req = new Request.Builder().url(url).get().build();
@@ -90,6 +176,7 @@ public class AccessibilityDetailActivity extends AppCompatActivity {
                     if (buttonContainer == null) return;
                     buttonContainer.removeAllViews();
                     buttonContainer.addView(disabled("Request failed: " + e.getMessage()));
+                    speakText("Failed to load professional details. Please try again.");
                 });
             }
 
@@ -103,7 +190,7 @@ public class AccessibilityDetailActivity extends AppCompatActivity {
                     rootTmp = null;
                 }
 
-                final JsonObject finalRoot = rootTmp; // <--- make it final
+                final JsonObject finalRoot = rootTmp;
 
                 runOnUiThread(() -> {
                     if (buttonContainer == null) return;
@@ -117,6 +204,9 @@ public class AccessibilityDetailActivity extends AppCompatActivity {
                         if (profId != null) {
                             Button btn = makeButton(profName);
                             btn.setOnClickListener(v -> {
+                                // Speak on selection
+                                speakText("Opening " + profName);
+
                                 Intent next = new Intent(AccessibilityDetailActivity.this, ProfessionalActivity.class);
                                 next.putExtra(ProfessionalActivity.EXTRA_CODPAIS, codPais);
                                 next.putExtra(ProfessionalActivity.EXTRA_CATEGORY_ID, categoryId);
@@ -134,9 +224,11 @@ public class AccessibilityDetailActivity extends AppCompatActivity {
                             buttonContainer.getChildAt(0).requestFocus();
                         } else {
                             buttonContainer.addView(disabled("(No professional id)"));
+                            speakText("Professional information is incomplete.");
                         }
                     } else {
                         buttonContainer.addView(disabled("(No professional)"));
+                        speakText("No professional is available for this option.");
                     }
                 });
             }
@@ -145,7 +237,38 @@ public class AccessibilityDetailActivity extends AppCompatActivity {
     }
     // ---------- END ORIGINAL LOGIC ----------
 
-    // ---------- UI helpers: darker ripple, elevation, DPAD focus/keys, focus ripple ----------
+    // ---------- TTS helpers ----------
+    private void speakText(String text) {
+        if (tts == null || text == null) return;
+        if (tts.isSpeaking()) {
+            tts.stop();
+        }
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, null);
+    }
+
+    private void speakViewLabel(View v, String fallback) {
+        if (!introFinished || v == null) return;
+
+        long now = System.currentTimeMillis();
+        if (v == lastSpokenView && (now - lastSpeakMillis) < 800) {
+            return; // avoid spamming same view too fast
+        }
+        lastSpokenView = v;
+        lastSpeakMillis = now;
+
+        CharSequence labelCs = null;
+        if (v instanceof Button) {
+            labelCs = ((Button) v).getText();
+        }
+        String label = (labelCs != null) ? labelCs.toString() : null;
+        String toSpeak = (label != null && !label.trim().isEmpty()) ? label : fallback;
+
+        if (toSpeak != null && !toSpeak.trim().isEmpty()) {
+            speakText(toSpeak);
+        }
+    }
+
+    // ---------- UI helpers: darker ripple, elevation, DPAD focus/keys, focus ripple + TTS ----------
     private Button makeButton(String text) {
         Button b = new Button(this);
         b.setAllCaps(false);
@@ -179,8 +302,12 @@ public class AccessibilityDetailActivity extends AppCompatActivity {
         b.setFocusableInTouchMode(true);
 
         b.setOnFocusChangeListener((v, hasFocus) -> {
-            if (hasFocus && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                triggerRipple(v);
+            if (hasFocus) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    triggerRipple(v);
+                }
+                // TTS when professional button is highlighted
+                speakViewLabel(v, "Selected item");
             }
         });
 
@@ -235,8 +362,30 @@ public class AccessibilityDetailActivity extends AppCompatActivity {
         }
     }
 
-    private int dp(int v) { float d = getResources().getDisplayMetrics().density; return Math.round(v * d); }
+    private int dp(int v) {
+        float d = getResources().getDisplayMetrics().density;
+        return Math.round(v * d);
+    }
+
     private static boolean isEmpty(String s) { return s == null || s.trim().isEmpty(); }
-    private static String safeString(JsonObject o, String k, String d){ return (o!=null&&o.has(k)&&!o.get(k).isJsonNull())?o.get(k).getAsString():d; }
-    private static Integer safeInt(JsonObject o, String k, Integer d){ try{ return (o!=null&&o.has(k)&&!o.get(k).isJsonNull())?o.get(k).getAsInt():d; }catch(Exception e){ return d; } }
+    private static String safeString(JsonObject o, String k, String d){
+        return (o!=null&&o.has(k)&&!o.get(k).isJsonNull())?o.get(k).getAsString():d;
+    }
+    private static Integer safeInt(JsonObject o, String k, Integer d){
+        try{
+            return (o!=null&&o.has(k)&&!o.get(k).isJsonNull())?o.get(k).getAsInt():d;
+        }catch(Exception e){
+            return d;
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (tts != null) {
+            tts.stop();
+            tts.shutdown();
+            tts = null;
+        }
+        super.onDestroy();
+    }
 }

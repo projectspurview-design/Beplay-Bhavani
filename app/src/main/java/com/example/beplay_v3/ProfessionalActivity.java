@@ -9,10 +9,13 @@ import android.graphics.drawable.Drawable;
 import android.graphics.drawable.RippleDrawable;
 import android.os.Build;
 import android.os.Bundle;
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.Toast;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -20,6 +23,7 @@ import com.google.gson.JsonObject;
 
 import java.io.IOException;
 import java.text.Normalizer;
+import java.util.Locale;
 
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -52,18 +56,73 @@ public class ProfessionalActivity extends AppCompatActivity {
 
     private String codPais, categoryId, eventId, roomId, regionId, languageId, accessibilityId, professionalId;
 
+    // ===== TTS fields (same pattern as RegionsActivity) =====
+    private TextToSpeech tts;
+    private View lastSpokenView = null;
+    private long lastSpeakMillis = 0L;
+    private boolean introFinished = false;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_professional); // see XML below
+        setContentView(R.layout.activity_professional); // see XML
 
         containerButtons = findViewById(R.id.professionalHeader);
 
-        // Back button like other screens
+        // Back button like other screens (+ TTS on focus, silent on click)
         Button backButton = findViewById(R.id.backButton);
-        if (backButton != null) backButton.setOnClickListener(v -> onBackPressed());
+        if (backButton != null) {
+            backButton.setOnClickListener(v -> onBackPressed());
 
-        // Read extras
+            backButton.setFocusable(true);
+            backButton.setFocusableInTouchMode(true);
+
+            backButton.setOnFocusChangeListener((v, hasFocus) -> {
+                if (!hasFocus) return;
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    triggerRipple(v);
+                }
+                // Speak "Back" when highlighted
+                speakViewLabel(v, "Back");
+            });
+        }
+
+        // ----- Init TTS (intro: "Join channel") -----
+        tts = new TextToSpeech(this, status -> {
+            if (status == TextToSpeech.SUCCESS) {
+                tts.setLanguage(Locale.US);
+                tts.setSpeechRate(0.9f);
+                tts.setPitch(0.9f);
+
+                tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                    @Override
+                    public void onStart(String utteranceId) { }
+
+                    @Override
+                    public void onDone(String utteranceId) {
+                        if ("intro_professional_channel".equals(utteranceId)) {
+                            introFinished = true;
+                            runOnUiThread(() -> speakCurrentlyFocusedItem());
+                        }
+                    }
+
+                    @Override
+                    public void onError(String utteranceId) {
+                        introFinished = true;
+                    }
+                });
+
+                tts.speak("Join channel",
+                        TextToSpeech.QUEUE_FLUSH,
+                        null,
+                        "intro_professional_channel");
+            } else {
+                Toast.makeText(this, "Text-to-Speech initialization failed", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        // Read extras (original logic)
         codPais         = getIntent().getStringExtra(EXTRA_CODPAIS);
         categoryId      = getIntent().getStringExtra(EXTRA_CATEGORY_ID);
         eventId         = getIntent().getStringExtra(EXTRA_EVENT_ID);
@@ -76,6 +135,7 @@ public class ProfessionalActivity extends AppCompatActivity {
         if (isEmpty(codPais) || isEmpty(categoryId) || isEmpty(eventId) || isEmpty(roomId)
                 || isEmpty(regionId) || isEmpty(languageId) || isEmpty(accessibilityId) || isEmpty(professionalId)) {
             if (containerButtons != null) containerButtons.addView(disabled("(Missing one or more required extras)"));
+            speakText("Required information is missing. Cannot join channel.");
             return;
         }
 
@@ -91,6 +151,29 @@ public class ProfessionalActivity extends AppCompatActivity {
         fetch(url);
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        speakCurrentlyFocusedItem();
+    }
+
+    // Speak currently focused view inside containerButtons (same pattern)
+    private void speakCurrentlyFocusedItem() {
+        if (!introFinished || containerButtons == null) return;
+
+        containerButtons.postDelayed(() -> {
+            View focused = containerButtons.findFocus();
+            if (focused == null && containerButtons.getChildCount() > 0) {
+                View first = containerButtons.getChildAt(0);
+                first.requestFocus();
+                focused = first;
+            }
+            if (focused != null) {
+                speakViewLabel(focused, "Selected item");
+            }
+        }, 220);
+    }
+
     private void fetch(String url) {
         Request req = new Request.Builder().url(url).get().build();
         client.newCall(req).enqueue(new Callback() {
@@ -99,6 +182,7 @@ public class ProfessionalActivity extends AppCompatActivity {
                     if (containerButtons == null) return;
                     containerButtons.removeAllViews();
                     containerButtons.addView(disabled("Request failed: " + e.getMessage()));
+                    speakText("Failed to load channel information. Please try again.");
                 });
             }
 
@@ -109,13 +193,16 @@ public class ProfessionalActivity extends AppCompatActivity {
                     try { rootTmp = gson.fromJson(body, JsonObject.class); } catch (Exception ignored) {}
                 }
                 final JsonObject finalRoot = rootTmp;
+                final boolean okResponse = response.isSuccessful();
+                final int httpCode = response.code();
 
                 runOnUiThread(() -> {
                     if (containerButtons == null) return;
                     containerButtons.removeAllViews();
 
-                    if (!response.isSuccessful()) {
-                        containerButtons.addView(disabled("HTTP " + response.code()));
+                    if (!okResponse) {
+                        containerButtons.addView(disabled("HTTP " + httpCode));
+                        speakText("Unable to load channel information. Server error.");
                         return;
                     }
 
@@ -155,6 +242,9 @@ public class ProfessionalActivity extends AppCompatActivity {
                                             || accName.contains("legenda");
                                 }
 
+                                // TTS on click
+                                speakText("Joining channel");
+
                                 Intent go = new Intent(ProfessionalActivity.this, AgoraChannelActivity.class);
                                 go.putExtra(EXTRA_AGORA_APP_ID, appIdF);
                                 go.putExtra(EXTRA_AGORA_TOKEN, tokenF);
@@ -169,16 +259,49 @@ public class ProfessionalActivity extends AppCompatActivity {
                             containerButtons.getChildAt(0).requestFocus();
                         } else {
                             containerButtons.addView(disabled("(Missing channel credentials)"));
+                            speakText("Channel credentials are missing. Cannot join.");
                         }
                     } else {
                         containerButtons.addView(disabled("(No channel info)"));
+                        speakText("No channel information is available.");
                     }
                 });
             }
         });
     }
 
-    // ----- UI helpers: darker ripple, elevation, DPAD focus/keys, focus ripple -----
+    // ===== TTS helpers =====
+    private void speakText(String text) {
+        if (tts == null || text == null) return;
+        if (tts.isSpeaking()) {
+            tts.stop();
+        }
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, null);
+    }
+
+    private void speakViewLabel(View v, String fallback) {
+        if (!introFinished || v == null) return;
+
+        long now = System.currentTimeMillis();
+        if (v == lastSpokenView && (now - lastSpeakMillis) < 800) {
+            return; // avoid repeating too fast on same view
+        }
+        lastSpokenView = v;
+        lastSpeakMillis = now;
+
+        CharSequence labelCs = null;
+        if (v instanceof Button) {
+            labelCs = ((Button) v).getText();
+        }
+        String label = (labelCs != null) ? labelCs.toString() : null;
+        String toSpeak = (label != null && !label.trim().isEmpty()) ? label : fallback;
+
+        if (toSpeak != null && !toSpeak.trim().isEmpty()) {
+            speakText(toSpeak);
+        }
+    }
+
+    // ----- UI helpers: darker ripple, elevation, DPAD focus/keys, focus ripple + TTS -----
     private Button makeButton(String text) {
         Button b = new Button(this);
         b.setAllCaps(false);
@@ -212,8 +335,12 @@ public class ProfessionalActivity extends AppCompatActivity {
         b.setFocusableInTouchMode(true);
 
         b.setOnFocusChangeListener((v, hasFocus) -> {
-            if (hasFocus && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                triggerRipple(v);
+            if (hasFocus) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    triggerRipple(v);
+                }
+                // TTS when the join button is highlighted
+                speakViewLabel(v, "Selected item");
             }
         });
 
@@ -269,15 +396,39 @@ public class ProfessionalActivity extends AppCompatActivity {
     }
 
     // ----- utils -----
-    private int dp(int v) { float d = getResources().getDisplayMetrics().density; return Math.round(v * d); }
+    private int dp(int v) {
+        float d = getResources().getDisplayMetrics().density;
+        return Math.round(v * d);
+    }
+
     private static boolean isEmpty(String s) { return s == null || s.trim().isEmpty(); }
-    private static String  safeString(JsonObject o, String k, String d) { return (o!=null && o.has(k) && !o.get(k).isJsonNull()) ? o.get(k).getAsString() : d; }
-    private static Integer safeInt(JsonObject o, String k, Integer d) { try { return (o!=null && o.has(k) && !o.get(k).isJsonNull()) ? o.get(k).getAsInt() : d; } catch (Exception e) { return d; } }
+
+    private static String  safeString(JsonObject o, String k, String d) {
+        return (o!=null && o.has(k) && !o.get(k).isJsonNull()) ? o.get(k).getAsString() : d;
+    }
+
+    private static Integer safeInt(JsonObject o, String k, Integer d) {
+        try {
+            return (o!=null && o.has(k) && !o.get(k).isJsonNull()) ? o.get(k).getAsInt() : d;
+        } catch (Exception e) {
+            return d;
+        }
+    }
 
     private static String normalizeLower(String in) {
         if (in == null) return "";
         String norm = Normalizer.normalize(in, Normalizer.Form.NFD)
                 .replaceAll("\\p{InCombiningDiacriticalMarks}+", "");
         return norm.toLowerCase().trim();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (tts != null) {
+            tts.stop();
+            tts.shutdown();
+            tts = null;
+        }
+        super.onDestroy();
     }
 }

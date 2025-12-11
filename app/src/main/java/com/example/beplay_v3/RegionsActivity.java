@@ -1,7 +1,5 @@
 package com.example.beplay_v3;
 
-import androidx.appcompat.app.AppCompatActivity;
-
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
@@ -25,7 +23,7 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-public class RegionsActivity extends AppCompatActivity {
+public class RegionsActivity extends BaseTtsActivity {
 
     public static final String EXTRA_CODPAIS     = "extra_codpais";
     public static final String EXTRA_CATEGORY_ID = "extra_category_id";
@@ -33,6 +31,8 @@ public class RegionsActivity extends AppCompatActivity {
     public static final String EXTRA_ROOM_ID     = "extra_room_id";
 
     private LinearLayout containerButtons;
+    private Button backButton;
+
     private final OkHttpClient client = new OkHttpClient();
     private final Gson gson = new GsonBuilder().create();
 
@@ -44,13 +44,32 @@ public class RegionsActivity extends AppCompatActivity {
         setContentView(R.layout.activity_regions);
 
         containerButtons = findViewById(R.id.containerButtons);
+        backButton = findViewById(R.id.backButton);
 
-        // Back button behavior (same as other screens)
-        Button backButton = findViewById(R.id.backButton);
+        // === Initialize TTS via base class ===
+        initTts("Choose region");
+
+        // === Back button behavior (NO TTS on click, only on focus) ===
         if (backButton != null) {
-            backButton.setOnClickListener(v -> goBack());
+            backButton.setOnClickListener(v -> {
+                // Removed: speakText("Going back");
+                goBack();
+            });
+
+            backButton.setFocusable(true);
+            backButton.setFocusableInTouchMode(true);
+
+            backButton.setOnFocusChangeListener((v, hasFocus) -> {
+                if (!hasFocus) return;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    triggerRipple(v);
+                }
+                // Speak "Back" (or button label) when highlighted
+                speakViewLabel(v, "Back");
+            });
         }
 
+        // ===== Intent extras (same logic as before) =====
         codPais     = getIntent().getStringExtra(EXTRA_CODPAIS);
         categoryId  = getIntent().getStringExtra(EXTRA_CATEGORY_ID);
         eventId     = getIntent().getStringExtra(EXTRA_EVENT_ID);
@@ -58,6 +77,7 @@ public class RegionsActivity extends AppCompatActivity {
 
         if (isEmpty(codPais) || isEmpty(categoryId) || isEmpty(eventId) || isEmpty(roomId)) {
             containerButtons.addView(disabled("(Missing codPais/categoryId/eventId/roomId)"));
+            speakText("Required information is missing. Cannot load regions.");
             return;
         }
 
@@ -70,12 +90,41 @@ public class RegionsActivity extends AppCompatActivity {
         fetchAndRender(url);
     }
 
-    // same back behavior
+    // called by back button or XML
     public void goBack() {
         onBackPressed();
     }
 
-    // -------- ORIGINAL LOGIC KEPT AS-IS --------
+    // When intro TTS finishes, speak whichever item is focused
+    @Override
+    protected void onTtsIntroFinished() {
+        speakCurrentlyFocusedItem();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // When coming back to this screen, announce the focused item again
+        speakCurrentlyFocusedItem();
+    }
+
+    // ===== Speak the currently focused item inside containerButtons =====
+    private void speakCurrentlyFocusedItem() {
+        containerButtons.postDelayed(() -> {
+            View focused = containerButtons.findFocus();
+            if (focused == null && containerButtons.getChildCount() > 0) {
+                View v = containerButtons.getChildAt(0);
+                v.requestFocus();
+                focused = v;
+            }
+
+            if (focused != null) {
+                speakViewLabel(focused, "Selected item");
+            }
+        }, 220);
+    }
+
+    // -------- FETCH + RENDER (same functional logic) --------
     private void fetchAndRender(String url) {
         Request req = new Request.Builder().url(url).get().build();
         client.newCall(req).enqueue(new Callback() {
@@ -83,6 +132,7 @@ public class RegionsActivity extends AppCompatActivity {
                 runOnUiThread(() -> {
                     containerButtons.removeAllViews();
                     containerButtons.addView(disabled("Request failed: " + e.getMessage()));
+                    speakText("Failed to load regions. Please try again.");
                 });
             }
 
@@ -92,6 +142,7 @@ public class RegionsActivity extends AppCompatActivity {
                     runOnUiThread(() -> {
                         containerButtons.removeAllViews();
                         containerButtons.addView(disabled("HTTP " + response.code()));
+                        speakText("Unable to load regions. Server error.");
                     });
                     return;
                 }
@@ -106,17 +157,22 @@ public class RegionsActivity extends AppCompatActivity {
                     containerButtons.removeAllViews();
                     if (idiomas.length == 0) {
                         containerButtons.addView(disabled("(No idiomas)"));
+                        speakText("No regions available.");
                         return;
                     }
+
                     for (IdiomaItem it : idiomas) {
                         String label = (it != null && it.nome != null && !it.nome.trim().isEmpty())
                                 ? it.nome
                                 : ("Idioma " + (it != null && it.id != null ? it.id : "?"));
 
                         Button btn = makeButton(label);
+
                         btn.setOnClickListener(v -> {
                             String idiomaId = (it != null && it.id != null) ? String.valueOf(it.id) : null;
                             if (isEmpty(idiomaId)) return;
+
+                            speakText("Opening " + label);
 
                             Intent i = new Intent(RegionsActivity.this, RegionDetailActivity.class);
                             i.putExtra(RegionDetailActivity.EXTRA_CODPAIS, codPais);
@@ -126,20 +182,22 @@ public class RegionsActivity extends AppCompatActivity {
                             i.putExtra(RegionDetailActivity.EXTRA_REGION_ID, idiomaId);
                             startActivity(i);
                         });
+
                         containerButtons.addView(btn);
                     }
 
-                    // optional: focus first item for DPAD navigation
+                    // Focus first region initially – TTS will be triggered after intro
                     if (containerButtons.getChildCount() > 0) {
-                        containerButtons.getChildAt(0).requestFocus();
+                        View first = containerButtons.getChildAt(0);
+                        first.requestFocus();
                     }
                 });
             }
         });
     }
-    // -------- END ORIGINAL LOGIC --------
+    // -------- END FETCH + RENDER --------
 
-    // -------- UI helpers (darker ripple, elevation, DPAD focus/keys, focus ripple) --------
+    // -------- UI helpers (ripple, DPAD, TTS on focus) --------
     private Button makeButton(String text) {
         Button b = new Button(this);
         b.setAllCaps(false);
@@ -153,7 +211,7 @@ public class RegionsActivity extends AppCompatActivity {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             Drawable original = b.getBackground();
-            int rippleColor = Color.parseColor("#80000000"); // 50% opacity black (darker ripple)
+            int rippleColor = Color.parseColor("#80000000");
 
             if (original instanceof RippleDrawable && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 ((RippleDrawable) original).setColor(ColorStateList.valueOf(rippleColor));
@@ -172,12 +230,17 @@ public class RegionsActivity extends AppCompatActivity {
         b.setFocusable(true);
         b.setFocusableInTouchMode(true);
 
+        // TTS when button is highlighted
         b.setOnFocusChangeListener((v, hasFocus) -> {
-            if (hasFocus && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                triggerRipple(v);
+            if (hasFocus) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    triggerRipple(v);
+                }
+                speakViewLabel(v, "Selected item");
             }
         });
 
+        // DPAD navigation between region buttons (same as original)
         b.setOnKeyListener((v, keyCode, event) -> {
             if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
 
@@ -229,6 +292,12 @@ public class RegionsActivity extends AppCompatActivity {
         }
     }
 
-    private int dp(int v) { float d = getResources().getDisplayMetrics().density; return Math.round(v * d); }
-    private boolean isEmpty(String s) { return s == null || s.trim().isEmpty(); }
+    private int dp(int v) {
+        float d = getResources().getDisplayMetrics().density;
+        return Math.round(v * d);
+    }
+
+    private boolean isEmpty(String s) {
+        return s == null || s.trim().isEmpty();
+    }
 }
