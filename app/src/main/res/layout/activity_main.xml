@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/bg_main_gradient">
+
+    <!-- Outer padding wrapper -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- BePlay logo instead of title/subtitle -->
+        <ImageView
+            android:id="@+id/imgLogo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:src="@drawable/beplayy"
+            android:contentDescription="@string/app_name"
+            android:layout_gravity="left"
+            android:adjustViewBounds="true"
+            android:maxWidth="160dp"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Card container (only buttons inside) -->
+        <LinearLayout
+            android:id="@+id/cardContainer"
+            android:layout_width="400dp"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:background="@drawable/bg_main_gradient"
+            android:padding="26dp"
+            android:elevation="4dp">
+
+            <!-- Scrollable list of buttons (no titles/hints, only buttons) -->
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:overScrollMode="ifContentScrolls">
+
+                <LinearLayout
+                    android:id="@+id/containerButtons"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+
+            </ScrollView>
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</LinearLayout>

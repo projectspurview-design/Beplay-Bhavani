@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package Agora.SpeechToText;
+
+option java_package = "io.agora.rtc.speech2text";
+option java_outer_classname = "AgoraSpeech2TextProtobuffer";
+option java_multiple_files = true;
+
+message Text {
+  int32 vendor = 1;
+  int32 version = 2;
+  int32 seqnum = 3;
+  int64 uid = 4;
+  int32 flag = 5;
+  int64 time = 6;
+  int32 lang = 7;
+  int32 starttime = 8;
+  int32 offtime = 9;
+  repeated Word words = 10;
+  bool endOfSegment = 11;
+  int32 durationMs = 12;
+  string dataType = 13;
+  repeated Translation trans = 14;
+  string culture = 15;
+  int64 textTs = 16;
+}
+
+message Word {
+  string text = 1;
+  int32 startMs = 2;
+  int32 durationMs = 3;
+  bool isFinal = 4;
+  double confidence = 5;
+}
+
+message Translation {
+  bool isFinal = 1;
+  string lang = 2;
+  repeated string texts = 3;
+}

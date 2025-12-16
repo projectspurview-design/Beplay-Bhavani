@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">BePlay</string>
+    <string name="admin_label">BePlay Admin</string>
+    <string name="admin_description">BePlay requires admin rights to function as default launcher</string>
+    <string name="welcome_message">Welcome to BePlay</string>
+    <string name="accessibility_options">Accessibility Options</string>
+    <string name="audio_transmission">Audio Transmission</string>
+    <string name="sign_language">Sign Language</string>
+    <string name="closed_captions">Closed Captions</string>
+    <string name="voice_commands">Voice commands: Audio • Sign Language • Captions</string>
+    <string name="opening_audio">Opening Audio Transmission</string>
+    <string name="opening_sign_language">Opening Sign Language</string>
+    <string name="opening_captions">Opening Captioning</string>
+    <string name="tts_init_failed">Text-to-Speech initialization failed</string>
+    <string name="speech_client_error">Error initializing speech client</string>
+    <string name="admin_required">Admin permissions required for this action</string>
+    <string name="launcher_error">Error setting as default launcher</string>
+    <string name="admin_rights_required">Admin rights are required for full functionality</string>
+    <string name="home_launcher">This is the home launcher</string>
+    <string name="no_browser">No browser available to open the link</string>
+    <string name="press_back_exit">Press back to exit</string>
+    <string name="accessibility_ready">BePlay Accessibility Options Ready</string>
+</resources>
